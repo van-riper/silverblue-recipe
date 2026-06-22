@@ -55,6 +55,40 @@ recipe_dir_user() {
   printf '%s/%s\n' "$HOME" "$DEFAULT_SUBDIR"
 }
 
+as_user() {
+  sudo -n -u "$TARGET_USER" "$@"
+}
+
+cmd_capture() {
+  local want_user="" out=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --user)       want_user=${2:-}; shift 2 ;;
+      --output-dir) out=${2:-}; shift 2 ;;
+      *) die "capture: unknown option: $1" ;;
+    esac
+  done
+  require_root capture
+  TARGET_USER=$(resolve_target_user "$want_user")
+  RECIPE_DIR=$(recipe_dir_root "$out" "$TARGET_USER")
+  as_user mkdir -p "$RECIPE_DIR"
+
+  rpm-ostree status | as_user tee "$RECIPE_DIR/rpm-ostree-status.txt" >/dev/null
+  capture_origins "$RECIPE_DIR"
+  as_user flatpak remotes --columns=name,url \
+    | as_user tee "$RECIPE_DIR/flatpak-remotes.txt" >/dev/null
+  as_user flatpak list --app --columns=application,origin \
+    | as_user tee "$RECIPE_DIR/flatpak-apps.txt" >/dev/null
+  { ostree admin config-diff || true; } | sort \
+    | as_user tee "$RECIPE_DIR/etc-config-diff.txt" >/dev/null
+  tar --zstd -c --ignore-failed-read \
+    -C / etc var/roothome var/lib/bluetooth var/lib/fprint \
+    var/lib/systemd/linger var/lib/AccountsService \
+    | as_user tee "$RECIPE_DIR/system-state.tar.zst" >/dev/null
+
+  printf 'Recipe written to %s\n' "$RECIPE_DIR"
+}
+
 usage() {
   cat <<'EOF'
 Usage: silverblue-recipe <command> [options]
@@ -80,7 +114,7 @@ main() {
   shift
   case $cmd in
     -h|--help|help) usage ;;
-    capture)          die "capture not implemented yet" ;;
+    capture) cmd_capture "$@" ;;
     restore-packages) die "restore-packages not implemented yet" ;;
     restore-flatpaks) die "restore-flatpaks not implemented yet" ;;
     restore-config)   die "restore-config not implemented yet" ;;
