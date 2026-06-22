@@ -1,0 +1,10 @@
+[Unit]
+Description=Regenerate the silverblue-recipe OS-layer backup for %i
+Before=btrbk.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/silverblue-recipe capture --user %i
+
+[Install]
+WantedBy=multi-user.target
