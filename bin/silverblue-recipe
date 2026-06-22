@@ -59,6 +59,49 @@ as_user() {
   sudo -n -u "$TARGET_USER" "$@"
 }
 
+live_origin_paths() {
+  local f
+  for f in /ostree/deploy/*/deploy/*.origin; do
+    [[ -e $f ]] && printf '%s\n' "$f"
+  done
+}
+
+archive_origin() {
+  local dir=$1 file=$2 hash a
+  hash=$(sha256sum "$file" | cut -d' ' -f1)
+  for a in "$dir"/origins/history/*.origin; do
+    [[ -e $a ]] || continue
+    if [[ $(sha256sum "$a" | cut -d' ' -f1) == "$hash" ]]; then
+      as_user rm -f "$file"
+      return
+    fi
+  done
+  as_user mv "$file" "$dir/origins/history/$(basename "$file")"
+}
+
+capture_origins() {
+  local dir=$1 f base existing ebase
+  as_user mkdir -p "$dir/origins" "$dir/origins/history"
+
+  local live=()
+  while IFS= read -r f; do
+    live+=("$(basename "$f")")
+  done < <(live_origin_paths)
+
+  for existing in "$dir"/origins/*.origin; do
+    [[ -e $existing ]] || continue
+    ebase=$(basename "$existing")
+    if ! printf '%s\n' "${live[@]}" | grep -qxF "$ebase"; then
+      archive_origin "$dir" "$existing"
+    fi
+  done
+
+  while IFS= read -r f; do
+    base=$(basename "$f")
+    as_user tee "$dir/origins/$base" >/dev/null < "$f"
+  done < <(live_origin_paths)
+}
+
 cmd_capture() {
   local want_user="" out=""
   while [[ $# -gt 0 ]]; do
