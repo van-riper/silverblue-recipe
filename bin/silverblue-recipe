@@ -6,6 +6,7 @@
 set -euo pipefail
 
 PROGNAME=${0##*/}
+VERSION="0.1.0"
 DEFAULT_SUBDIR=".local/share/silverblue-recipe"
 
 die() {
@@ -222,6 +223,7 @@ Options:
   --output-dir <dir> Override the recipe directory
   --dry-run          (restore-*) print commands without running them
   -h, --help         Show this help
+  -v, --version      Show version
 EOF
 }
 
@@ -231,6 +233,7 @@ main() {
   shift
   case $cmd in
     -h|--help|help) usage ;;
+    -v|--version|version) printf '%s %s\n' "$PROGNAME" "$VERSION" ;;
     capture) cmd_capture "$@" ;;
     restore-packages) cmd_restore_packages "$@" ;;
     restore-flatpaks) cmd_restore_flatpaks "$@" ;;
