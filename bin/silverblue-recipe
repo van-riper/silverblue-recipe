@@ -187,6 +187,25 @@ cmd_restore_flatpaks() {
   done < "$dir/flatpak-apps.txt"
 }
 
+cmd_restore_config() {
+  local dry=0 out="" want_user=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --dry-run)    dry=1; shift ;;
+      --user)       want_user=${2:-}; shift 2 ;;
+      --output-dir) out=${2:-}; shift 2 ;;
+      *) die "restore-config: unknown option: $1" ;;
+    esac
+  done
+  require_root restore-config
+  local user dir tarball
+  user=$(resolve_target_user "$want_user")
+  dir=$(recipe_dir_root "$out" "$user")
+  tarball="$dir/system-state.tar.zst"
+  [[ -f $tarball ]] || die "missing $tarball"
+  run_or_print "$dry" tar -C / --zstd -xf "$tarball"
+}
+
 usage() {
   cat <<'EOF'
 Usage: silverblue-recipe <command> [options]
@@ -215,7 +234,7 @@ main() {
     capture) cmd_capture "$@" ;;
     restore-packages) cmd_restore_packages "$@" ;;
     restore-flatpaks) cmd_restore_flatpaks "$@" ;;
-    restore-config)   die "restore-config not implemented yet" ;;
+    restore-config) cmd_restore_config "$@" ;;
     *) usage; die "unknown command: $cmd" ;;
   esac
 }
