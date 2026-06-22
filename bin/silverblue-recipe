@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#
+# silverblue-recipe: capture and replay the reproducible
+# OS layer of a Fedora Atomic (Silverblue) host.
+#
+set -euo pipefail
+
+PROGNAME=${0##*/}
+
+die() {
+  printf '%s: %s\n' "$PROGNAME" "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: silverblue-recipe <command> [options]
+
+Commands:
+  capture            Regenerate the recipe (root)
+  restore-packages   Re-layer rpm-ostree packages from the recipe
+  restore-flatpaks   Reinstall flatpaks from the recipe
+  restore-config     Untar captured /etc + /var state over / (root)
+
+Options:
+  --user <name>      (capture) target user; defaults to $SUDO_USER under sudo
+  --user             (restore-flatpaks) install per-user, not system-wide
+  --output-dir <dir> Override the recipe directory
+  --dry-run          (restore-*) print commands without running them
+  -h, --help         Show this help
+EOF
+}
+
+main() {
+  local cmd=${1:-}
+  [[ -n $cmd ]] || { usage; exit 1; }
+  shift
+  case $cmd in
+    -h|--help|help) usage ;;
+    capture)          die "capture not implemented yet" ;;
+    restore-packages) die "restore-packages not implemented yet" ;;
+    restore-flatpaks) die "restore-flatpaks not implemented yet" ;;
+    restore-config)   die "restore-config not implemented yet" ;;
+    *) usage; die "unknown command: $cmd" ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]:-} == "${0}" ]]; then
+  main "$@"
+fi

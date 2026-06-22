@@ -1,0 +1,7 @@
+# Captured recipe output should never live in the repo
+/silverblue-recipe-output/
+*.tar.zst
+
+# Editor cruft
+*~
+.*.swp
