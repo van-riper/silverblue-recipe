@@ -6,8 +6,8 @@
 set -euo pipefail
 
 PROGNAME=${0##*/}
-VERSION="0.1.0"
-DEFAULT_SUBDIR=".local/share/silverblue-recipe"
+VERSION='0.1.0'
+DEFAULT_SUBDIR='.local/share/silverblue-recipe'
 
 die() {
   printf '%s: %s\n' "$PROGNAME" "$*" >&2
@@ -17,6 +17,7 @@ die() {
 run_or_print() {
   local dry=$1
   shift
+
   if [[ $dry == 1 ]]; then
     printf '%s\n' "$*"
   else
@@ -30,6 +31,7 @@ require_root() {
 
 resolve_target_user() {
   local want=$1
+
   if [[ -n $want ]]; then
     printf '%s\n' "$want"
     return
@@ -38,31 +40,38 @@ resolve_target_user() {
     printf '%s\n' "$SUDO_USER"
     return
   fi
-  die "cannot determine target user; pass --user <name>"
+
+  die 'cannot determine target user, try passing --user <username>'
 }
 
 user_home() {
   local user=$1 home
+
   home=$(getent passwd "$user" | cut -d: -f6) || true
   [[ -n $home ]] || die "no home directory for user: $user"
+
   printf '%s\n' "$home"
 }
 
 recipe_dir_root() {
   local out=$1 user=$2
+
   if [[ -n $out ]]; then
     printf '%s\n' "$out"
     return
   fi
+
   printf '%s/%s\n' "$(user_home "$user")" "$DEFAULT_SUBDIR"
 }
 
 recipe_dir_user() {
   local out=$1
+
   if [[ -n $out ]]; then
     printf '%s\n' "$out"
     return
   fi
+
   printf '%s/%s\n' "$HOME" "$DEFAULT_SUBDIR"
 }
 
@@ -72,6 +81,7 @@ as_user() {
 
 live_origin_paths() {
   local f
+
   for f in /ostree/deploy/*/deploy/*.origin; do
     [[ -e $f ]] && printf '%s\n' "$f"
   done
@@ -80,6 +90,7 @@ live_origin_paths() {
 archive_origin() {
   local dir=$1 file=$2 hash a
   hash=$(sha256sum "$file" | cut -d' ' -f1)
+
   for a in "$dir"/origins/history/*.origin; do
     [[ -e $a ]] || continue
     if [[ $(sha256sum "$a" | cut -d' ' -f1) == "$hash" ]]; then
@@ -87,6 +98,7 @@ archive_origin() {
       return
     fi
   done
+
   as_user mv "$file" "$dir/origins/history/$(basename "$file")"
 }
 
@@ -114,7 +126,8 @@ capture_origins() {
 }
 
 cmd_capture() {
-  local want_user="" out=""
+  local want_user='' out='' recipe_dir
+
   while [[ $# -gt 0 ]]; do
     case $1 in
       --user)       want_user=${2:-}; shift 2 ;;
@@ -122,29 +135,33 @@ cmd_capture() {
       *) die "capture: unknown option: $1" ;;
     esac
   done
-  require_root capture
-  TARGET_USER=$(resolve_target_user "$want_user")
-  RECIPE_DIR=$(recipe_dir_root "$out" "$TARGET_USER")
-  as_user mkdir -p "$RECIPE_DIR"
 
-  rpm-ostree status | as_user tee "$RECIPE_DIR/rpm-ostree-status.txt" >/dev/null
-  capture_origins "$RECIPE_DIR"
+  require_root capture
+
+  # TARGET_USER is global on purpose: as_user and capture_origins read it.
+  TARGET_USER=$(resolve_target_user "$want_user")
+  recipe_dir=$(recipe_dir_root "$out" "$TARGET_USER")
+  as_user mkdir -p "$recipe_dir"
+
+  rpm-ostree status | as_user tee "$recipe_dir/rpm-ostree-status.txt" >/dev/null
+  capture_origins "$recipe_dir"
   as_user flatpak remotes --columns=name,url \
-    | as_user tee "$RECIPE_DIR/flatpak-remotes.txt" >/dev/null
+    | as_user tee "$recipe_dir/flatpak-remotes.txt" >/dev/null
   as_user flatpak list --app --columns=application,origin \
-    | as_user tee "$RECIPE_DIR/flatpak-apps.txt" >/dev/null
+    | as_user tee "$recipe_dir/flatpak-apps.txt" >/dev/null
   { ostree admin config-diff || true; } | sort \
-    | as_user tee "$RECIPE_DIR/etc-config-diff.txt" >/dev/null
+    | as_user tee "$recipe_dir/etc-config-diff.txt" >/dev/null
   tar --zstd -c --ignore-failed-read \
     -C / etc var/roothome var/lib/bluetooth var/lib/fprint \
     var/lib/systemd/linger var/lib/AccountsService \
-    | as_user tee "$RECIPE_DIR/system-state.tar.zst" >/dev/null
+    | as_user tee "$recipe_dir/system-state.tar.zst" >/dev/null
 
-  printf 'Recipe written to %s\n' "$RECIPE_DIR"
+  printf 'Recipe written to %s\n' "$recipe_dir"
 }
 
 cmd_restore_packages() {
-  local dry=0 out=""
+  local dry=0 out=''
+
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dry-run)    dry=1; shift ;;
@@ -152,15 +169,19 @@ cmd_restore_packages() {
       *) die "restore-packages: unknown option: $1" ;;
     esac
   done
+
   local dir origin base pkgs rems
   dir=$(recipe_dir_user "$out")
+
   # Origin filenames are deployment checksums, so ls is safe here.
   # shellcheck disable=SC2012
   origin=$(ls -t "$dir"/origins/*.origin 2>/dev/null | head -1) || true
   [[ -n $origin ]] || die "no origin files in $dir/origins"
+
   base=$(awk -F= '/^baserefspec=/{print $2}' "$origin")
   pkgs=$(awk -F= '/^requested=/{print $2}' "$origin" | tr ';' ' ')
   rems=$(awk -F= '/^remove=/{print $2}' "$origin" | tr ';' ' ')
+
   [[ -n $base ]] && printf '# base image: %s\n' "$base"
   # shellcheck disable=SC2086
   [[ -n ${pkgs// /} ]] && run_or_print "$dry" rpm-ostree install $pkgs
@@ -170,7 +191,8 @@ cmd_restore_packages() {
 }
 
 cmd_restore_flatpaks() {
-  local dry=0 out="" scope=--system
+  local dry=0 out='' scope=--system
+
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dry-run)    dry=1; shift ;;
@@ -179,9 +201,11 @@ cmd_restore_flatpaks() {
       *) die "restore-flatpaks: unknown option: $1" ;;
     esac
   done
+
   local dir app origin
   dir=$(recipe_dir_user "$out")
-  [[ -f "$dir/flatpak-apps.txt" ]] || die "missing $dir/flatpak-apps.txt"
+  [[ -f $dir/flatpak-apps.txt ]] || die "missing $dir/flatpak-apps.txt"
+
   while read -r app origin; do
     [[ -n $app ]] || continue
     run_or_print "$dry" flatpak install -y "$scope" "${origin:-flathub}" "$app"
@@ -189,7 +213,8 @@ cmd_restore_flatpaks() {
 }
 
 cmd_restore_config() {
-  local dry=0 out="" want_user=""
+  local dry=0 out='' want_user=''
+
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dry-run)    dry=1; shift ;;
@@ -198,12 +223,15 @@ cmd_restore_config() {
       *) die "restore-config: unknown option: $1" ;;
     esac
   done
+
   require_root restore-config
+
   local user dir tarball
   user=$(resolve_target_user "$want_user")
   dir=$(recipe_dir_root "$out" "$user")
   tarball="$dir/system-state.tar.zst"
   [[ -f $tarball ]] || die "missing $tarball"
+
   run_or_print "$dry" tar -C / --zstd -xf "$tarball"
 }
 
@@ -222,7 +250,7 @@ Options:
   --user             (restore-flatpaks) install per-user, not system-wide
   --output-dir <dir> Override the recipe directory
   --dry-run          (restore-*) print commands without running them
-  -h, --help         Show this help
+  -h, --help         Show this help message
   -v, --version      Show version
 EOF
 }
@@ -231,6 +259,7 @@ main() {
   local cmd=${1:-}
   [[ -n $cmd ]] || { usage; exit 1; }
   shift
+
   case $cmd in
     -h|--help|help) usage ;;
     -v|--version|version) printf '%s %s\n' "$PROGNAME" "$VERSION" ;;
