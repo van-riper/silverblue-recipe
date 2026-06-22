@@ -13,6 +13,16 @@ die() {
   exit 1
 }
 
+run_or_print() {
+  local dry=$1
+  shift
+  if [[ $dry == 1 ]]; then
+    printf '%s\n' "$*"
+  else
+    "$@"
+  fi
+}
+
 require_root() {
   [[ $EUID -eq 0 ]] || die "must run as root (use sudo): $PROGNAME $1"
 }
@@ -132,6 +142,32 @@ cmd_capture() {
   printf 'Recipe written to %s\n' "$RECIPE_DIR"
 }
 
+cmd_restore_packages() {
+  local dry=0 out=""
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --dry-run)    dry=1; shift ;;
+      --output-dir) out=${2:-}; shift 2 ;;
+      *) die "restore-packages: unknown option: $1" ;;
+    esac
+  done
+  local dir origin base pkgs rems
+  dir=$(recipe_dir_user "$out")
+  # Origin filenames are deployment checksums, so ls is safe here.
+  # shellcheck disable=SC2012
+  origin=$(ls -t "$dir"/origins/*.origin 2>/dev/null | head -1) || true
+  [[ -n $origin ]] || die "no origin files in $dir/origins"
+  base=$(awk -F= '/^baserefspec=/{print $2}' "$origin")
+  pkgs=$(awk -F= '/^requested=/{print $2}' "$origin" | tr ';' ' ')
+  rems=$(awk -F= '/^remove=/{print $2}' "$origin" | tr ';' ' ')
+  [[ -n $base ]] && printf '# base image: %s\n' "$base"
+  # shellcheck disable=SC2086
+  [[ -n ${pkgs// /} ]] && run_or_print "$dry" rpm-ostree install $pkgs
+  # shellcheck disable=SC2086
+  [[ -n ${rems// /} ]] && run_or_print "$dry" rpm-ostree override remove $rems
+  return 0
+}
+
 usage() {
   cat <<'EOF'
 Usage: silverblue-recipe <command> [options]
@@ -158,7 +194,7 @@ main() {
   case $cmd in
     -h|--help|help) usage ;;
     capture) cmd_capture "$@" ;;
-    restore-packages) die "restore-packages not implemented yet" ;;
+    restore-packages) cmd_restore_packages "$@" ;;
     restore-flatpaks) die "restore-flatpaks not implemented yet" ;;
     restore-config)   die "restore-config not implemented yet" ;;
     *) usage; die "unknown command: $cmd" ;;
