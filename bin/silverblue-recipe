@@ -6,10 +6,53 @@
 set -euo pipefail
 
 PROGNAME=${0##*/}
+DEFAULT_SUBDIR=".local/share/silverblue-recipe"
 
 die() {
   printf '%s: %s\n' "$PROGNAME" "$*" >&2
   exit 1
+}
+
+require_root() {
+  [[ $EUID -eq 0 ]] || die "must run as root (use sudo): $PROGNAME $1"
+}
+
+resolve_target_user() {
+  local want=$1
+  if [[ -n $want ]]; then
+    printf '%s\n' "$want"
+    return
+  fi
+  if [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]]; then
+    printf '%s\n' "$SUDO_USER"
+    return
+  fi
+  die "cannot determine target user; pass --user <name>"
+}
+
+user_home() {
+  local user=$1 home
+  home=$(getent passwd "$user" | cut -d: -f6) || true
+  [[ -n $home ]] || die "no home directory for user: $user"
+  printf '%s\n' "$home"
+}
+
+recipe_dir_root() {
+  local out=$1 user=$2
+  if [[ -n $out ]]; then
+    printf '%s\n' "$out"
+    return
+  fi
+  printf '%s/%s\n' "$(user_home "$user")" "$DEFAULT_SUBDIR"
+}
+
+recipe_dir_user() {
+  local out=$1
+  if [[ -n $out ]]; then
+    printf '%s\n' "$out"
+    return
+  fi
+  printf '%s/%s\n' "$HOME" "$DEFAULT_SUBDIR"
 }
 
 usage() {
