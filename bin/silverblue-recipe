@@ -212,6 +212,18 @@ cmd_restore_flatpaks() {
   done < "$dir/flatpak-apps.txt"
 }
 
+confirm_restore_config() {
+  cat >&2 <<'EOF'
+WARNING: restore-config will overwrite /etc and parts of /var on this system.
+You WILL lose data, so DO NOT run it unless you're on a fresh install.
+EOF
+  printf 'Proceed? [y/N] ' >&2
+
+  local answer=''
+  read -r answer || true
+  [[ $answer == [yY] ]] || die 'restore-config aborted'
+}
+
 cmd_restore_config() {
   local dry=0 out='' want_user=''
 
@@ -231,6 +243,10 @@ cmd_restore_config() {
   dir=$(recipe_dir_root "$out" "$user")
   tarball="$dir/system-state.tar.zst"
   [[ -f $tarball ]] || die "missing $tarball"
+
+  if [[ $dry -ne 1 ]]; then
+    confirm_restore_config
+  fi
 
   run_or_print "$dry" tar -C / --zstd -xf "$tarball"
 }

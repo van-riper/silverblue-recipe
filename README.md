@@ -79,6 +79,9 @@ Add `--dry-run` to any restore command to see what it would run.
     sudo silverblue-recipe restore-config
     ```
 
+    **Warning:** `restore-config` overwrites `/etc` and parts of `/var`.
+    **Do not** run it unless you're on a fresh installation of Silverblue.
+
 The restore steps stay separate on purpose. Real recovery also involves reboots
 and a `home` restore that this tool leaves to you.
 
