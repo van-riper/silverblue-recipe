@@ -46,6 +46,14 @@ die() {
   exit 1
 }
 
+# Echo an option's value, rejecting a missing one or the next flag.
+need_arg() {
+  local opt=$1 val=${2:-}
+
+  [[ -n $val && $val != -* ]] || die "$opt requires a value"
+  printf '%s\n' "$val"
+}
+
 run_or_print() {
   local dry=$1
   shift
@@ -162,8 +170,8 @@ cmd_capture() {
 
   while [[ $# -gt 0 ]]; do
     case $1 in
-      --user)       want_user=${2:-}; shift 2 ;;
-      --output-dir) out=${2:-}; shift 2 ;;
+      --user)       want_user=$(need_arg --user "${2:-}"); shift 2 ;;
+      --output-dir) out=$(need_arg --output-dir "${2:-}"); shift 2 ;;
       *) die "capture: unknown option: $1" ;;
     esac
   done
@@ -173,6 +181,9 @@ cmd_capture() {
   # TARGET_USER is global on purpose: as_user and capture_origins read it.
   TARGET_USER=$(resolve_target_user "$want_user")
   recipe_dir=$(recipe_dir_root "$out" "$TARGET_USER")
+  if [[ -e $recipe_dir && ! -d $recipe_dir ]]; then
+    die "not a directory: $recipe_dir"
+  fi
   as_user mkdir -p "$recipe_dir"
 
   rpm-ostree status | as_user tee "$recipe_dir/rpm-ostree-status.txt" >/dev/null
@@ -197,13 +208,14 @@ cmd_restore_packages() {
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dry-run)    dry=1; shift ;;
-      --output-dir) out=${2:-}; shift 2 ;;
+      --output-dir) out=$(need_arg --output-dir "${2:-}"); shift 2 ;;
       *) die "restore-packages: unknown option: $1" ;;
     esac
   done
 
   local dir origin base pkgs rems
   dir=$(recipe_dir_user "$out")
+  [[ -d $dir ]] || die "not a directory: $dir"
 
   # Origin filenames are deployment checksums, so ls is safe here.
   # shellcheck disable=SC2012
@@ -229,13 +241,14 @@ cmd_restore_flatpaks() {
     case $1 in
       --dry-run)    dry=1; shift ;;
       --user)       scope=--user; shift ;;
-      --output-dir) out=${2:-}; shift 2 ;;
+      --output-dir) out=$(need_arg --output-dir "${2:-}"); shift 2 ;;
       *) die "restore-flatpaks: unknown option: $1" ;;
     esac
   done
 
   local dir app origin
   dir=$(recipe_dir_user "$out")
+  [[ -d $dir ]] || die "not a directory: $dir"
   [[ -f $dir/flatpak-apps.txt ]] || die "missing $dir/flatpak-apps.txt"
 
   while read -r app origin; do
@@ -263,8 +276,8 @@ cmd_restore_config() {
     case $1 in
       --dry-run)    dry=1; shift ;;
       --apply)      apply=1; shift ;;
-      --user)       want_user=${2:-}; shift 2 ;;
-      --output-dir) out=${2:-}; shift 2 ;;
+      --user)       want_user=$(need_arg --user "${2:-}"); shift 2 ;;
+      --output-dir) out=$(need_arg --output-dir "${2:-}"); shift 2 ;;
       *) die "restore-config: unknown option: $1" ;;
     esac
   done
@@ -274,6 +287,7 @@ cmd_restore_config() {
   local user dir tarball
   user=$(resolve_target_user "$want_user")
   dir=$(recipe_dir_root "$out" "$user")
+  [[ -d $dir ]] || die "not a directory: $dir"
   tarball="$dir/system-state.tar.zst"
   [[ -f $tarball ]] || die "missing $tarball"
 
