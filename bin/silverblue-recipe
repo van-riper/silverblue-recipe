@@ -1,13 +1,45 @@
 #!/usr/bin/env bash
 #
-# silverblue-recipe: capture and replay the reproducible
-# OS layer of a Fedora Atomic (Silverblue) host.
+# silverblue-recipe: capture and restore the reproducible
+# ostree layer of a Fedora Silverblue installation.
 #
 set -euo pipefail
 
 PROGNAME=${0##*/}
 VERSION='0.1.0'
 DEFAULT_SUBDIR='.local/share/silverblue-recipe'
+
+# /etc files carrying machine identity, accounts, or storage UUIDs.
+# Running 'sudo silverblue-recipe restore-config --apply' never
+# writes these to a live system; restore them by hand if you must.
+RESTORE_EXCLUDES=(
+  etc/.pwd.lock                  # passwd/shadow edit lock
+  etc/.rpm-ostree-shadow-mode-fixed2.stamp # rpm-ostree migration stamp
+  etc/.updated                   # first-boot timestamp marker
+  etc/crypttab                   # LUKS device UUIDs
+  etc/fstab                      # filesystem mount UUIDs
+  etc/group etc/group-           # local groups
+  etc/gshadow etc/gshadow-       # group password hashes
+  etc/iscsi/initiatorname.iscsi  # iSCSI host identity
+  etc/krb5.keytab                # Kerberos host keys
+  etc/machine-id                 # unique machine identifier
+  etc/machine-info               # chassis/hardware metadata
+  etc/mdadm.conf                 # RAID array UUIDs
+  etc/mdadm/mdadm.conf           # RAID array UUIDs (alt path)
+  etc/nvme/hostid                # NVMe host id
+  etc/nvme/hostnqn               # NVMe host NQN
+  etc/passwd etc/passwd-         # local user accounts
+  'etc/pki/tls/private/*'        # host TLS private keys
+  etc/salt/minion_id             # Salt minion identity
+  'etc/selinux/targeted/*.LOCK'  # SELinux policy DB locks
+  etc/selinux/targeted/active    # SELinux module store
+  etc/shadow etc/shadow-         # user password hashes
+  'etc/ssh/ssh_host_*'           # SSH host keys
+  etc/subgid etc/subgid-         # subordinate GID ranges
+  etc/subuid etc/subuid-         # subordinate UID ranges
+  etc/sudoers                    # sudo policy
+  'etc/wireguard/*'              # WireGuard private keys
+)
 
 die() {
   printf '%s: %s\n' "$PROGNAME" "$*" >&2
@@ -151,7 +183,7 @@ cmd_capture() {
     | as_user tee "$recipe_dir/flatpak-apps.txt" >/dev/null
   { ostree admin config-diff || true; } | sort \
     | as_user tee "$recipe_dir/etc-config-diff.txt" >/dev/null
-  tar --zstd -c --ignore-failed-read \
+  tar --zstd -c --ignore-failed-read --acls --xattrs --selinux \
     -C / etc var/roothome var/lib/bluetooth var/lib/fprint \
     var/lib/systemd/linger var/lib/AccountsService \
     | as_user tee "$recipe_dir/system-state.tar.zst" >/dev/null
@@ -225,11 +257,12 @@ EOF
 }
 
 cmd_restore_config() {
-  local dry=0 out='' want_user=''
+  local dry=0 apply=0 out='' want_user=''
 
   while [[ $# -gt 0 ]]; do
     case $1 in
       --dry-run)    dry=1; shift ;;
+      --apply)      apply=1; shift ;;
       --user)       want_user=${2:-}; shift 2 ;;
       --output-dir) out=${2:-}; shift 2 ;;
       *) die "restore-config: unknown option: $1" ;;
@@ -244,11 +277,35 @@ cmd_restore_config() {
   tarball="$dir/system-state.tar.zst"
   [[ -f $tarball ]] || die "missing $tarball"
 
-  if [[ $dry -ne 1 ]]; then
-    confirm_restore_config
+  local excludes=() pat
+  for pat in "${RESTORE_EXCLUDES[@]}"; do
+    excludes+=("--exclude=$pat")
+  done
+  local apply_cmd=(
+    tar -C / --zstd --acls --xattrs --selinux
+    "${excludes[@]}" -xf "$tarball"
+  )
+
+  if [[ $dry -eq 1 ]]; then
+    printf '%s\n' "${apply_cmd[*]}"
+    return 0
   fi
 
-  run_or_print "$dry" tar -C / --zstd -xf "$tarball"
+  if [[ $apply -eq 1 ]]; then
+    confirm_restore_config
+    "${apply_cmd[@]}"
+    restorecon -R /etc /var/roothome /var/lib/bluetooth /var/lib/fprint \
+      /var/lib/systemd/linger /var/lib/AccountsService 2>/dev/null || true
+    return 0
+  fi
+
+  local review
+  review=$(mktemp -d /var/tmp/silverblue-recipe-etc.XXXXXX)
+  tar -C "$review" --zstd -xf "$tarball"
+
+  printf 'Extracted config to %s for review.\n' "$review"
+  printf 'Copy what you want by hand, or rerun with --apply to overlay onto /\n'
+  printf '(identity files like machine-id, fstab, and ssh keys are skipped).\n'
 }
 
 usage() {
@@ -256,18 +313,19 @@ usage() {
 Usage: silverblue-recipe <command> [options]
 
 Commands:
-  capture            Regenerate the recipe (root)
-  restore-packages   Re-layer rpm-ostree packages from the recipe
-  restore-flatpaks   Reinstall flatpaks from the recipe
-  restore-config     Untar captured /etc + /var state over / (root)
+  capture             Regenerate the recipe (root)
+  restore-packages    Re-layer rpm-ostree packages from the recipe
+  restore-flatpaks    Reinstall flatpaks from the recipe
+  restore-config      Stage captured /etc + /var for review (root)
 
 Options:
-  --user <name>      (capture) target user; defaults to $SUDO_USER under sudo
-  --user             (restore-flatpaks) install per-user, not system-wide
-  --output-dir <dir> Override the recipe directory
-  --dry-run          (restore-*) print commands without running them
-  -h, --help         Show this help message
-  -v, --version      Show version
+  --user <name>       (capture) target user; defaults to $SUDO_USER under sudo
+  --user              (restore-flatpaks) install per-user, not system-wide
+  --apply             (restore-config) overlay reviewed config onto / (root)
+  --output-dir <path> Override the recipe directory
+  --dry-run           (restore-*) print commands without running them
+  -h, --help          Show this help message
+  -v, --version       Show version information
 EOF
 }
 

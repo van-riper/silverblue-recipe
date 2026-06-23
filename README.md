@@ -57,35 +57,49 @@ silverblue-recipe capture --user <username>
 - `restore-flatpaks`: reinstall your flatpaks
 - `restore-config`: restore captured `/etc` and `/var` bits
 
-Add `--dry-run` to any restore command to see what it would run.
+Add `--dry-run` to any `restore` command to see what it would run.
 
 ## Restore onto a fresh install
 
 1. Re-layer packages, then reboot:
 
-    ```shell
-    silverblue-recipe restore-packages
-    ```
+   ```shell
+   silverblue-recipe restore-packages
+   ```
 
 2. Reinstall flatpaks (`--user` for per-user installs):
 
-    ```shell
-    silverblue-recipe restore-flatpaks
-    ```
+   ```shell
+   silverblue-recipe restore-flatpaks
+   ```
 
-3. Restore system config over the live tree:
+3. Restore system config. This will extract the captured `/etc` and `/var` into
+   a review directory and stops; nothing touches the live system:
 
-    ```shell
-    sudo silverblue-recipe restore-config
-    ```
+   ```shell
+   sudo silverblue-recipe restore-config
+   ```
 
-    **Warning:** `restore-config` overwrites `/etc` and parts of `/var`.
-    **Do not** run it unless you're on a fresh installation of Silverblue.
+   From here, it's recommended to just manually copy what you need into `/etc`
+   and `/var`. This is much safer than applying all the extracted files.
+
+   If you still wish to apply all the extracted files, make sure to review them
+   _carefully_, then overlay them onto `/` with `--apply`:
+
+   ```shell
+   sudo silverblue-recipe restore-config --apply
+   ```
+
+   **WARNING:** `--apply` overwrites `/etc` and parts of `/var`, so only run
+   it on a fresh install. It skips machine-identity files (machine-id, fstab,
+   crypttab, ssh host keys, passwd/shadow/group, nvme ids) and relabels
+   SELinux afterward. Check hardware-specific config (graphics drivers,
+   firmware) yourself before applying.
 
 The restore steps stay separate on purpose. Real recovery also involves reboots
 and a `home` restore that this tool leaves to you.
 
-If you want the program to point to a different folder, use the
+If you want the program to point to a different folder for storing data, use the
 `--output-dir <path>` flag. This is useful when you want the data stored on an
 external drive for keeping backups.
 
