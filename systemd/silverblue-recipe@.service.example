@@ -1,6 +1,7 @@
 [Unit]
 Description=Regenerate the silverblue-recipe OS-layer backup for %i
-Before=btrbk.service
+# Uncomment to order the capture before a btrbk backup:
+#Before=btrbk.service
 
 [Service]
 Type=oneshot

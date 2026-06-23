@@ -6,8 +6,14 @@ back: layered `rpm-ostree` packages, flatpaks, and your `/etc` changes. It does
 not back up your data. Pair it with a `home` backup for that.  All data is
 stored in `~/.local/share/silverblue-recipe/`.
 
-That output holds secrets: SSH host keys, WiFi passwords, shadow hashes. Keep it
-out of public repos.
+Required dependencies:
+
+- [Fedora Silverblue 44](https://fedoraproject.org/atomic-desktops/silverblue/)
+
+Optional dependencies:
+
+- [btrbk](https://digint.ch/btrbk/index.html)
+
 
 ## Install
 
@@ -34,8 +40,11 @@ sudo cp systemd/silverblue-recipe@.service.example /etc/systemd/system/silverblu
 sudo systemctl enable "silverblue-recipe@$USER.service"
 ```
 
-Enabling runs it at boot, ordered before `btrbk.service`. To run it before every
-backup instead, make your btrbk unit depend on it (`Wants=` plus `Before=`).
+Once enabled, the service captures at boot.
+
+If you use btrbk and want the recipe to refresh before each backup, uncomment
+the unit's `Before=btrbk.service` line before applying the template. Make sure
+you have a `btrbk.service` drop-in that `Wants=` it.
 
 ## Capture
 
